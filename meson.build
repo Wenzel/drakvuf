@@ -128,6 +128,11 @@ if get_option('threadsafety')
     config_h.set('ENABLE_THREADSAFETY', 1)
 endif
 
+# VirtualBox through LibVMI's libmicrovmi driver needs Hidden page allocation (vmi_alloc_hidden_gfn)
+if meson.get_compiler('c').has_function('vmi_alloc_hidden_gfn', prefix : '#include <libvmi/libvmi.h>', dependencies : libvmi)
+    config_h.set('HAVE_VMI_ALLOC_HIDDEN_GFN', 1)
+endif
+
 summary({
     'Build': version,
 }, section: 'Version')

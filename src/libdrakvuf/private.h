@@ -179,6 +179,7 @@ struct drakvuf
     bool get_userid;
 
     xen_interface_t* xen;
+    bool virtualbox; // VirtualBox through LibVMI only (domain "vbox:<VM name>"): xen stays NULL
     os_interface_t osi;
     uint16_t altp2m_idx, altp2m_idr, altp2m_idrx;
     bool vcpu_monitor[MAX_DRAKVUF_VCPU];

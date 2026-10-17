@@ -1390,6 +1390,63 @@ bool inject_trap_mem(drakvuf_t drakvuf, drakvuf_trap_t* trap, bool guard2)
     return 1;
 }
 
+/* A page outside guest RAM for the sink page or a shadow copy: populated above max_gpfn on Xen, a Hidden page on VirtualBox */
+static bool alloc_page(drakvuf_t drakvuf, xen_pfn_t* gfn)
+{
+    if ( drakvuf->virtualbox )
+    {
+#ifdef HAVE_VMI_ALLOC_HIDDEN_GFN
+        uint64_t hidden;
+        if ( VMI_FAILURE == vmi_alloc_hidden_gfn(drakvuf->vmi, &hidden) )
+        {
+            fprintf(stderr, "Failed to allocate a Hidden page, set VBoxInternal/VMI/HiddenPages high enough before the VM starts\n");
+            return 0;
+        }
+        *gfn = hidden;
+        return 1;
+#else
+        return 0;
+#endif
+    }
+
+    *gfn = ++(drakvuf->max_gpfn);
+    int rc = xen_populate_physmap(drakvuf->xen, drakvuf->domID, gfn);
+    PRINT_DEBUG("Physmap populated? %i\n", rc);
+    return rc;
+}
+
+static void free_page(drakvuf_t drakvuf, xen_pfn_t* gfn)
+{
+    if ( !drakvuf->virtualbox )
+        xen_decrease_reservation(drakvuf->xen, drakvuf->domID, gfn);
+    else if ( VMI_FAILURE == vmi_free_gfn(drakvuf->vmi, *gfn) )
+        fprintf(stderr, "Failed to free Hidden page 0x%lx\n", *gfn);
+}
+
+/* Frees the shadow copies and the sink page */
+static void free_pages(drakvuf_t drakvuf)
+{
+    if (drakvuf->remapped_gfns)
+    {
+        GHashTableIter i;
+        gpointer key;
+        struct remapped_gfn* remapped_gfn = NULL;
+        ghashtable_foreach(drakvuf->remapped_gfns, i, key, remapped_gfn)
+        {
+            free_page(drakvuf, &remapped_gfn->r);
+        }
+
+        g_hash_table_destroy(drakvuf->remapped_gfns);
+        drakvuf->remapped_gfns = NULL;
+    }
+
+    if (drakvuf->sink_page_gfn)
+    {
+        free_page(drakvuf, &drakvuf->sink_page_gfn);
+        drakvuf->sink_page_gfn = 0;
+    }
+}
+
 bool inject_trap_pa(drakvuf_t drakvuf,
     drakvuf_trap_t* trap,
     addr_t pa)
@@ -1439,11 +1496,8 @@ bool inject_trap_pa(drakvuf_t drakvuf,
             goto err_exit;
 
         remapped_gfn->o = current_gfn;
-        remapped_gfn->r = ++(drakvuf->max_gpfn);
 
-        int rc = xen_populate_physmap(drakvuf->xen, drakvuf->domID, &remapped_gfn->r);
-        PRINT_DEBUG("Physmap populated? %i\n", rc);
-        if (!rc)
+        if ( !alloc_page(drakvuf, &remapped_gfn->r) )
         {
             g_slice_free(struct remapped_gfn, remapped_gfn);
             remapped_gfn = NULL;
@@ -1841,10 +1895,25 @@ void drakvuf_vmi_event_callback (int fd, void* data)
 
 static void drakvuf_poll(drakvuf_t drakvuf, unsigned int timeout)
 {
+    /* a zero timeout drains: every fd callback runs, raised or not */
+    bool drain = !timeout;
+
+    if ( drakvuf->virtualbox )
+    {
+        /* No event channel: LibVMI waits for VBoxVMI events itself, plugin fds are then checked without waiting */
+        if ( VMI_SUCCESS != vmi_events_listen(drakvuf->vmi, timeout) )
+        {
+            PRINT_DEBUG("Error waiting for events, quitting...\n");
+            drakvuf->interrupted = -1;
+            return;
+        }
+        timeout = 0;
+    }
+
     int rc = poll(drakvuf->event_fds, drakvuf->event_fd_cnt, timeout);
     drakvuf->poll_rc = rc;
 
-    if (!rc && timeout)
+    if (!rc && !drain)
         return;
 
     else if (rc < 0)
@@ -1860,7 +1929,7 @@ static void drakvuf_poll(drakvuf_t drakvuf, unsigned int timeout)
     /* check and process each fd if it was raised */
     for (int poll_ix=0; poll_ix<drakvuf->event_fd_cnt; poll_ix++)
     {
-        if (timeout && !(drakvuf->event_fds[poll_ix].revents & (POLLIN | POLLERR)) )
+        if (!drain && !(drakvuf->event_fds[poll_ix].revents & (POLLIN | POLLERR)) )
             continue;
 
         fd_info_t fd_info = &drakvuf->fd_info_lookup[poll_ix];
@@ -1928,17 +1997,35 @@ bool init_vmi(drakvuf_t drakvuf, bool fast_singlestep)
     if ( !init_data )
         return 0;
 
+    vmi_mode_t mode = VMI_XEN;
+    const void* domain = &drakvuf->domID;
+    uint64_t init_flags = VMI_INIT_DOMAINID | VMI_INIT_EVENTS;
+
     init_data->count = 1;
-    init_data->entry[0].type = VMI_INIT_DATA_XEN_EVTCHN;
-    init_data->entry[0].data = (void*) xen_get_evtchn(drakvuf->xen);
+    if ( drakvuf->virtualbox )
+    {
+#ifdef HAVE_VMI_ALLOC_HIDDEN_GFN
+        /* VMI events, Memory views and Hidden pages need the VBoxVMI access method */
+        mode = VMI_VIRTUALBOX;
+        domain = drakvuf->dom_name;
+        init_flags = VMI_INIT_DOMAINNAME | VMI_INIT_EVENTS;
+        init_data->entry[0].type = VMI_INIT_DATA_VBOX_ACCESS_METHOD;
+        init_data->entry[0].data = (void*) VMI_VBOX_ACCESS_METHOD_VBOXVMI;
+#endif
+    }
+    else
+    {
+        init_data->entry[0].type = VMI_INIT_DATA_XEN_EVTCHN;
+        init_data->entry[0].data = (void*) xen_get_evtchn(drakvuf->xen);
+    }
 
     PRINT_DEBUG("init_vmi on domID %u -> %s\n", drakvuf->domID, drakvuf->dom_name);
 
     /* initialize the libvmi library */
     status_t status = vmi_init(&drakvuf->vmi,
-            VMI_XEN,
-            &drakvuf->domID,
-            VMI_INIT_DOMAINID | VMI_INIT_EVENTS,
+            mode,
+            domain,
+            init_flags,
             init_data,
             NULL);
     g_free(init_data);
@@ -1949,8 +2036,16 @@ bool init_vmi(drakvuf_t drakvuf, bool fast_singlestep)
     }
     PRINT_DEBUG("init_vmi: initializing vmi done\n");
 
+    /* on Xen, drakvuf_init paused the domain before */
+    if ( drakvuf->virtualbox && VMI_FAILURE == vmi_pause_vm(drakvuf->vmi) )
+    {
+        fprintf(stderr, "Failed to pause the VM\n");
+        return 0;
+    }
+
     drakvuf->vcpus = vmi_get_num_vcpus(drakvuf->vmi);
-    drakvuf->init_memsize = xen_get_maxmemkb(drakvuf->xen, drakvuf->domID);
+    if ( drakvuf->xen )
+        drakvuf->init_memsize = xen_get_maxmemkb(drakvuf->xen, drakvuf->domID);
 
     drakvuf->max_gpfn = vmi_get_max_physical_address(drakvuf->vmi) >> XC_PAGE_SHIFT;
     if ( !drakvuf->max_gpfn )
@@ -1991,17 +2086,16 @@ bool init_vmi(drakvuf_t drakvuf, bool fast_singlestep)
         }
     }
 
-    /* domain->max_pages is mostly just an annoyance that we can safely ignore */
-    rc = xen_set_maxmemkb(drakvuf->xen, drakvuf->domID, ~0);
-    PRINT_DEBUG("Max mem set? %i\n", rc);
-    if (!rc)
-        return 0;
+    if ( drakvuf->xen )
+    {
+        /* domain->max_pages is mostly just an annoyance that we can safely ignore */
+        rc = xen_set_maxmemkb(drakvuf->xen, drakvuf->domID, ~0);
+        PRINT_DEBUG("Max mem set? %i\n", rc);
+        if (!rc)
+            return 0;
+    }
 
-    drakvuf->sink_page_gfn = ++(drakvuf->max_gpfn);
-
-    rc = xen_populate_physmap(drakvuf->xen, drakvuf->domID, &drakvuf->sink_page_gfn);
-    PRINT_DEBUG("Physmap populated? %i\n", rc);
-    if (!rc)
+    if ( !alloc_page(drakvuf, &drakvuf->sink_page_gfn) )
         return 0;
 
     uint8_t fmask[VMI_PS_4KB] = {[0 ... VMI_PS_4KB-1] = 0xFF};
@@ -2011,10 +2105,14 @@ bool init_vmi(drakvuf_t drakvuf, bool fast_singlestep)
         return 0;
     }
 
-    bool altp2m = xen_set_altp2m_params(drakvuf->xen, drakvuf->domID);
-    PRINT_DEBUG("Altp2m params set: %i\n", altp2m);
-    if (!altp2m)
-        return 0;
+    bool altp2m;
+    if ( drakvuf->xen )
+    {
+        altp2m = xen_set_altp2m_params(drakvuf->xen, drakvuf->domID);
+        PRINT_DEBUG("Altp2m params set: %i\n", altp2m);
+        if (!altp2m)
+            return 0;
+    }
 
     altp2m = vmi_slat_control(drakvuf->vmi, 1) == VMI_SUCCESS;
     PRINT_DEBUG("Altp2m enabled: %i\n", altp2m);
@@ -2098,7 +2196,8 @@ bool init_vmi(drakvuf_t drakvuf, bool fast_singlestep)
     }
 
     // TODO: Fast singlestep is disabled by default for now while a bug is being fixed upstream in Xen
-    if ( fast_singlestep && xen_version() >= 14 )
+    // (Xen only: VirtualBox has no next-view step)
+    if ( fast_singlestep && drakvuf->xen && xen_version() >= 14 )
         drakvuf->int3_response_flags = VMI_EVENT_RESPONSE_SLAT_ID |     // Switch to this ID immediately
             VMI_EVENT_RESPONSE_NEXT_SLAT_ID; // Switch to next ID after singlestepping a single instruction
     else
@@ -2115,7 +2214,10 @@ void close_vmi(drakvuf_t drakvuf)
 {
     PRINT_DEBUG("close_vmi starting\n");
 
-    xen_pause(drakvuf->xen, drakvuf->domID);
+    if ( drakvuf->xen )
+        xen_pause(drakvuf->xen, drakvuf->domID);
+    else if ( drakvuf->vmi )
+        vmi_pause_vm(drakvuf->vmi);
 
     if (drakvuf->vmi)
     {
@@ -2135,6 +2237,9 @@ void close_vmi(drakvuf_t drakvuf)
 
         // clear the generic mem_event to speed up shutdown
         vmi_clear_event(drakvuf->vmi, &drakvuf->mem_event, NULL);
+        // Hidden pages are released through the VBoxVMI connection
+        if ( drakvuf->virtualbox )
+            free_pages(drakvuf);
         vmi_destroy(drakvuf->vmi);
         drakvuf->vmi = NULL;
     }
@@ -2180,19 +2285,7 @@ void close_vmi(drakvuf_t drakvuf)
         drakvuf->breakpoint_lookup_pa = NULL;
     }
 
-    if (drakvuf->remapped_gfns)
-    {
-        GHashTableIter i;
-        gpointer key;
-        struct remapped_gfn* remapped_gfn = NULL;
-        ghashtable_foreach(drakvuf->remapped_gfns, i, key, remapped_gfn)
-        {
-            xen_decrease_reservation(drakvuf->xen, drakvuf->domID, &remapped_gfn->r);
-        }
-
-        g_hash_table_destroy(drakvuf->remapped_gfns);
-        drakvuf->remapped_gfns = NULL;
-    }
+    free_pages(drakvuf);
 
     if (drakvuf->debug)
         g_slist_free(drakvuf->debug);
@@ -2240,15 +2333,16 @@ void close_vmi(drakvuf_t drakvuf)
         drakvuf->step_event[i] = NULL;
     }
 
-    if (drakvuf->sink_page_gfn)
-        xen_decrease_reservation(drakvuf->xen, drakvuf->domID, &drakvuf->sink_page_gfn);
-    xen_set_maxmemkb(drakvuf->xen, drakvuf->domID, drakvuf->init_memsize);
+    if ( drakvuf->xen )
+        xen_set_maxmemkb(drakvuf->xen, drakvuf->domID, drakvuf->init_memsize);
 
     drakvuf->altp2m_idx = 0;
     drakvuf->altp2m_idr = 0;
     drakvuf->sink_page_gfn = 0;
 
-    xen_resume(drakvuf->xen, drakvuf->domID);
+    // VirtualBox: closing the VBoxVMI connection resumed the VM
+    if ( drakvuf->xen )
+        xen_resume(drakvuf->xen, drakvuf->domID);
 
     PRINT_DEBUG("close_vmi finished\n");
 }

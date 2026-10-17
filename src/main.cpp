@@ -183,7 +183,7 @@ static void print_usage()
     fprintf(stderr, "Required input:\n"
         "\t -r, --json-kernel <path to json>\n"
         "\t                           The OS kernel's json profile\n"
-        "\t -d <domain ID or name>    The domain's ID or name\n"
+        "\t -d <domain ID or name>    The domain's ID or name, or vbox:<VM name> for a VirtualBox VM (VBoxVMI)\n"
         "Optional inputs:\n"
         "\t -l                        Use libvmi.conf\n"
         "\t -k <kpgd value>           Use provided KPGD value for faster and more robust startup (advanced)\n"

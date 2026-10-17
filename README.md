@@ -27,6 +27,22 @@ DRAKVUF currently supports:
  - Windows 10 64-bit
  - Linux 2.6.x - 6.x, both 32-bit and 64-bit
 
+
+## VirtualBox proof of concept
+
+With a LibVMI build that provides the libmicrovmi Memory-view and Hidden-page
+operations, `-d vbox:<VM name>` selects VirtualBox through VBoxVMI without
+opening Xen. Configure `VBoxInternal/VMI/Enabled=1` and a sufficient
+`VBoxInternal/VMI/HiddenPages` value before cold-starting the VM, then run, for
+example:
+
+```sh
+drakvuf -r linux-profile.json -d vbox:analysis-vm -a ptracemon
+```
+
+`-F` and `-p` remain Xen-only. The compatible component revisions and complete
+live Linux reproduction are documented in libmicrovmi's VirtualBox driver guide.
+
 ## Pre-built Debian packages
 
 You can find pre-built Debian packages of the latest DRAKVUF builds at

@@ -226,20 +226,34 @@ bool drakvuf_init(
 
     g_rec_mutex_init(&drakvuf->vmi_lock);
 
-    if ( !xen_init_interface(&drakvuf->xen) )
-        goto err;
-
-    /* register the main VMI event callback */
-    drakvuf_event_fd_add(drakvuf, xen_get_evtchn_fd(drakvuf->xen), drakvuf_vmi_event_callback, drakvuf);
-    PRINT_DEBUG("drakvuf_init: adding event_fd done\n");
-
-    if ( !xen_get_dom_info(drakvuf->xen, domain, &drakvuf->domID, &drakvuf->dom_name) )
+    if ( g_str_has_prefix(domain, VIRTUALBOX_DOMAIN_PREFIX) )
     {
-        fprintf(stderr, "Failed to get domain info\n");
+        /* VirtualBox VM by name: LibVMI only, no Xen interface, its event loop waits in LibVMI */
+#ifdef HAVE_VMI_ALLOC_HIDDEN_GFN
+        drakvuf->virtualbox = true;
+        drakvuf->dom_name = g_strdup(domain + strlen(VIRTUALBOX_DOMAIN_PREFIX));
+#else
+        fprintf(stderr, "This LibVMI has no VirtualBox support\n");
         goto err;
+#endif
     }
+    else
+    {
+        if ( !xen_init_interface(&drakvuf->xen) )
+            goto err;
 
-    xen_pause(drakvuf->xen, drakvuf->domID);
+        /* register the main VMI event callback */
+        drakvuf_event_fd_add(drakvuf, xen_get_evtchn_fd(drakvuf->xen), drakvuf_vmi_event_callback, drakvuf);
+        PRINT_DEBUG("drakvuf_init: adding event_fd done\n");
+
+        if ( !xen_get_dom_info(drakvuf->xen, domain, &drakvuf->domID, &drakvuf->dom_name) )
+        {
+            fprintf(stderr, "Failed to get domain info\n");
+            goto err;
+        }
+
+        xen_pause(drakvuf->xen, drakvuf->domID);
+    }
 
     if (!init_vmi(drakvuf, fast_singlestep))
         goto err;
@@ -655,11 +669,17 @@ bool drakvuf_resume (drakvuf_t drakvuf)
 
 void drakvuf_force_resume (drakvuf_t drakvuf)
 {
-    xen_force_resume(drakvuf->xen, drakvuf->domID);
+    if ( drakvuf->virtualbox )
+        /* a VBoxVMI resume undoes any number of pauses */
+        vmi_resume_vm(drakvuf->vmi);
+    else
+        xen_force_resume(drakvuf->xen, drakvuf->domID);
 }
 
 int drakvuf_send_qemu_monitor_command(drakvuf_t drakvuf, const char* in, char** out)
 {
+    if ( !drakvuf->xen )
+        return -1;
     return xen_send_qemu_monitor_command(drakvuf->xen, drakvuf->domID, in, out);
 }
 
@@ -1136,7 +1156,7 @@ bool drakvuf_set_vcpu_gprs(drakvuf_t drakvuf, unsigned int vcpu, registers_t* re
 {
     vcpu_guest_context_any_t ctx;
 
-    if ( !xen_get_vcpu_ctx(drakvuf->xen, drakvuf->domID, vcpu, &ctx) )
+    if ( !drakvuf->xen || !xen_get_vcpu_ctx(drakvuf->xen, drakvuf->domID, vcpu, &ctx) )
         return false;
 
     // HVM guests are always treated as x64 by Xen
@@ -1293,8 +1313,8 @@ void drakvuf_remove_injection(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 static bool is_valid_vcpu(drakvuf_t drakvuf, unsigned int vcpu)
 {
     // VMs with more than MAX_DRAKVUF_VCPU vCPUs are not
-    // supported for usage with IPT, this limit is DRAKVUF specific
-    return vcpu < MAX_DRAKVUF_VCPU && drakvuf->vcpus > vcpu;
+    // supported for usage with IPT, this limit is DRAKVUF specific; IPT is Xen only
+    return drakvuf->xen && vcpu < MAX_DRAKVUF_VCPU && drakvuf->vcpus > vcpu;
 }
 
 bool drakvuf_enable_ipt(drakvuf_t drakvuf, unsigned int vcpu, uint8_t** buf, uint64_t* size, uint64_t flags)

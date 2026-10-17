@@ -169,6 +169,9 @@ ptracemon::ptracemon(drakvuf_t drakvuf, output_format_t output) : pluginex(drakv
     if (nullptr == syshook)
     {
         PRINT_DEBUG("[PTRACEMON] Method __x64_sys_ptrace not found\n");
-        return;
+        auto vmi = vmi_lock_guard(drakvuf);
+        vmi_mode_t mode;
+        if (VMI_SUCCESS == vmi_get_access_mode(vmi, nullptr, 0, nullptr, &mode) && mode == VMI_VIRTUALBOX)
+            throw -1;
     }
 }

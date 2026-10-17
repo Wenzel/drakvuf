@@ -812,6 +812,11 @@ AM_CONDITIONAL([MAKE_TESTS], [test x$have_check = xyes])
 
 PKG_CHECK_MODULES([GLIB], [glib-2.0 >= 2.28], [], [AC_ERROR([glib-2.0 (version 2.28+) has to be installed!])])
 PKG_CHECK_MODULES([VMI], [libvmi >= 0.11], [], [AC_ERROR([LibVMI not found])])
+# VirtualBox through LibVMI's libmicrovmi driver needs Hidden page allocation
+save_LIBS=$LIBS
+LIBS="$VMI_LIBS $LIBS"
+AC_CHECK_FUNCS([vmi_alloc_hidden_gfn])
+LIBS=$save_LIBS
 PKG_CHECK_MODULES([JSONC], [json-c >= 0.15], [AC_DEFINE([JSONC5], [1], [json-c5 installed])],
     [PKG_CHECK_MODULES([JSONC], [json-c], [], [AC_ERROR([libjson-c not found])])])
 AS_IF([test x$plugin_procdump == xyes || test x$plugin_procdump2 == xyes],

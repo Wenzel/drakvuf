@@ -429,6 +429,9 @@ typedef void (*drakvuf_trap_free_t)(drakvuf_trap_t* trap);
 
 typedef void (*event_cb_t) (int fd, void* data);
 
+/* drakvuf_init domain prefix selecting a VirtualBox VM by name, e.g. "vbox:myvm" (needs a LibVMI with VBoxVMI support) */
+#define VIRTUALBOX_DOMAIN_PREFIX "vbox:"
+
 bool drakvuf_init (drakvuf_t* drakvuf,
     const char* domain,
     const char* json_profile,
