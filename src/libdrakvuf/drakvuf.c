@@ -1154,9 +1154,34 @@ int drakvuf_event_fd_add(drakvuf_t drakvuf, int fd, event_cb_t event_cb, void* d
 
 bool drakvuf_set_vcpu_gprs(drakvuf_t drakvuf, unsigned int vcpu, registers_t* regs)
 {
-    vcpu_guest_context_any_t ctx;
+    if ( !drakvuf->xen )
+    {
+        // only RIP and the GPRs, as on Xen: the other registers keep their current value
+        registers_t cur;
+        if ( VMI_FAILURE == vmi_get_vcpuregs(drakvuf->vmi, &cur, vcpu) )
+            return false;
+        cur.x86.rip = regs->x86.rip;
+        cur.x86.rax = regs->x86.rax;
+        cur.x86.rbx = regs->x86.rbx;
+        cur.x86.rcx = regs->x86.rcx;
+        cur.x86.rdx = regs->x86.rdx;
+        cur.x86.rbp = regs->x86.rbp;
+        cur.x86.rsp = regs->x86.rsp;
+        cur.x86.rsi = regs->x86.rsi;
+        cur.x86.rdi = regs->x86.rdi;
+        cur.x86.r8 = regs->x86.r8;
+        cur.x86.r9 = regs->x86.r9;
+        cur.x86.r10 = regs->x86.r10;
+        cur.x86.r11 = regs->x86.r11;
+        cur.x86.r12 = regs->x86.r12;
+        cur.x86.r13 = regs->x86.r13;
+        cur.x86.r14 = regs->x86.r14;
+        cur.x86.r15 = regs->x86.r15;
+        return VMI_SUCCESS == vmi_set_vcpuregs(drakvuf->vmi, &cur, vcpu);
+    }
 
-    if ( !drakvuf->xen || !xen_get_vcpu_ctx(drakvuf->xen, drakvuf->domID, vcpu, &ctx) )
+    vcpu_guest_context_any_t ctx;
+    if ( !xen_get_vcpu_ctx(drakvuf->xen, drakvuf->domID, vcpu, &ctx) )
         return false;
 
     // HVM guests are always treated as x64 by Xen
