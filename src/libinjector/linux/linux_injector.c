@@ -104,6 +104,8 @@
  * It is distributed as part of DRAKVUF under the same license             *
  ***************************************************************************/
 
+#include <sys/syscall.h>
+
 #include <libinjector/debug_helpers.h>
 
 #include "linux_injector.h"
@@ -229,6 +231,9 @@ static event_response_t wait_for_target_process_cb(drakvuf_t drakvuf, drakvuf_tr
         info->regs->cr3, info->proc_data.pid, info->proc_data.ppid, info->proc_data.tid);
 
     if (info->proc_data.pid != injector->target_pid || info->proc_data.tid != injector->target_tid)
+        return VMI_EVENT_RESPONSE_NONE;
+    // rt_sigreturn restores RIP from the signal frame; it never returns to RCX.
+    if (info->regs->rax == SYS_rt_sigreturn)
         return VMI_EVENT_RESPONSE_NONE;
 
     // rcx register should have the address for userspace rip
