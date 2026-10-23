@@ -215,7 +215,7 @@ static void print_usage()
         "\t                           Wait for plugins to stop before termination loop\n"
         "\t -a <plugin>               Activate the specified plugin\n"
         "\t -p                        Leave domain paused after DRAKVUF exits\n"
-        "\t -F, --fast-singlestep     Enable fast singlestepping (requires Xen 4.14+)\n"
+        "\t -F, --fast-singlestep     Enable fast singlestepping (Xen 4.14+ or VirtualBox)\n"
         "\t --traps-ttl <ttl value>   Maximum number of times trap can be triggered in 10sec period. Protects against api hammering.\n"
         "\t --ignore-pid <PID>        Ignore events from process with PID (can be repeated multiple times).\n"
         "\t --enable-active-callback-check\n"

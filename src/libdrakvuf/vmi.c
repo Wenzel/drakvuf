@@ -2195,9 +2195,8 @@ bool init_vmi(drakvuf_t drakvuf, bool fast_singlestep)
         return 0;
     }
 
-    // TODO: Fast singlestep is disabled by default for now while a bug is being fixed upstream in Xen
-    // (Xen only: VirtualBox has no next-view step)
-    if ( fast_singlestep && drakvuf->xen && xen_version() >= 14 )
+    // Keep the Xen version gate; VirtualBox supports next-view single-step directly.
+    if ( fast_singlestep && (!drakvuf->xen || xen_version() >= 14) )
         drakvuf->int3_response_flags = VMI_EVENT_RESPONSE_SLAT_ID |     // Switch to this ID immediately
             VMI_EVENT_RESPONSE_NEXT_SLAT_ID; // Switch to next ID after singlestepping a single instruction
     else
