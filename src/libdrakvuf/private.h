@@ -185,6 +185,7 @@ struct drakvuf
     bool vcpu_monitor[MAX_DRAKVUF_VCPU];
 
     xen_pfn_t sink_page_gfn;
+    uint32_t hidden_pages_allocated; // VirtualBox: count of allocated Hidden pages (sink + shadows)
 
     event_response_t int3_response_flags;
 

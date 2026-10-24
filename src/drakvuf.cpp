@@ -205,6 +205,11 @@ void drakvuf_c::plugin_stop_loop(int _timeout, const bool* plugin_list)
     cleanup_timer();
 }
 
+uint32_t drakvuf_c::get_hidden_pages_allocated()
+{
+    return drakvuf ? drakvuf_get_hidden_pages_allocated(drakvuf) : 0;
+}
+
 drakvuf_c::drakvuf_c(const char* domain,
     const char* json_kernel_path,
     const char* json_wow_path,

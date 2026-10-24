@@ -1399,10 +1399,15 @@ static bool alloc_page(drakvuf_t drakvuf, xen_pfn_t* gfn)
         uint64_t hidden;
         if ( VMI_FAILURE == vmi_alloc_hidden_gfn(drakvuf->vmi, &hidden) )
         {
-            fprintf(stderr, "Failed to allocate a Hidden page, set VBoxInternal/VMI/HiddenPages high enough before the VM starts\n");
+            fprintf(stderr, "Hidden page pool exhausted after allocating %u pages (1 sink + %u shadows).\n"
+                            "Increase VBoxInternal/VMI/HiddenPages to at least %u before the VM starts.\n",
+                    drakvuf->hidden_pages_allocated,
+                    drakvuf->hidden_pages_allocated > 0 ? drakvuf->hidden_pages_allocated - 1 : 0,
+                    drakvuf->hidden_pages_allocated + 1);
             return 0;
         }
         *gfn = hidden;
+        drakvuf->hidden_pages_allocated++;
         return 1;
 #else
         return 0;
@@ -1604,7 +1609,7 @@ bool inject_trap_pa(drakvuf_t drakvuf,
 
         if ( VMI_FAILURE == vmi_write_8_pa(vmi, rpa, &bp) )
         {
-            PRINT_DEBUG("Using breakpoint instruction @ 0x%lx is not possible. Using fallback.\n", container->breakpoint.pa);
+            fprintf(stderr, "Breakpoint stealth guard at PA 0x%lx: failed to write breakpoint to shadow page (execute-only pages may not be supported), falling back to RWX guard\n", container->breakpoint.pa);
             container->breakpoint.guard.memaccess.access |= VMI_MEMACCESS_X;
         }
     }

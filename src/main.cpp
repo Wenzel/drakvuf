@@ -1219,6 +1219,18 @@ int main(int argc, char** argv)
     if (drakvuf->start_plugins(plugin_list, &options) < 0)
         return drakvuf_exit_code_t::FAIL;
 
+    if (domain && g_str_has_prefix(domain, "vbox:"))
+    {
+        uint32_t allocated = drakvuf->get_hidden_pages_allocated();
+        if (allocated > 0)
+        {
+            uint32_t shadows = allocated > 1 ? allocated - 1 : 0;
+            eprint_current_time();
+            fprintf(stderr, "VirtualBox Hidden pages: %u allocated (1 sink + %u shadow%s)\n",
+                    allocated, shadows, shadows != 1 ? "s" : "");
+        }
+    }
+
     PRINT_DEBUG("Beginning DRAKVUF main loop\n");
 
     /* Start the event listener */

@@ -473,6 +473,8 @@ int drakvuf_read_addr(drakvuf_t drakvuf, drakvuf_trap_info_t* info,
     const access_context_t* ctx, addr_t* addr) NOEXCEPT;
 
 uint16_t drakvuf_get_dom_id(drakvuf_t drakvuf) NOEXCEPT;
+uint32_t drakvuf_get_hidden_pages_allocated(drakvuf_t drakvuf) NOEXCEPT;
+
 
 addr_t drakvuf_get_kernel_base(drakvuf_t drakvuf) NOEXCEPT;
 
