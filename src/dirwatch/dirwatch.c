@@ -379,6 +379,12 @@ int main(int argc, char** argv)
         return 1;
     }
 
+    if (!strncmp(argv[2], "vbox:", 5))
+    {
+        fprintf(stderr, "VirtualBox does not support dirwatch (Xen cloning and Xenstore are required)\n");
+        return 1;
+    }
+
     /* for a clean exit */
     act.sa_handler = close_handler;
     act.sa_flags = 0;

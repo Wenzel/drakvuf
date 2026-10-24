@@ -1097,6 +1097,35 @@ int main(int argc, char** argv)
         return drakvuf_exit_code_t::FAIL;
     }
 
+    if (g_str_has_prefix(domain, "vbox:"))
+    {
+        if (leave_paused)
+        {
+            fprintf(stderr, "VirtualBox does not support -p (leave paused on exit)\n");
+            return drakvuf_exit_code_t::FAIL;
+        }
+#ifdef ENABLE_PLUGIN_IPT
+        if (plugin_list[PLUGIN_IPT] && (disabled_all || options.ipt_dir))
+        {
+            fprintf(stderr, "VirtualBox does not support the ipt plugin (Intel PT requires Xen)\n");
+            return drakvuf_exit_code_t::FAIL;
+        }
+#endif
+#ifdef ENABLE_PLUGIN_HIDSIM
+        if (plugin_list[PLUGIN_HIDSIM] && disabled_all)
+        {
+            fprintf(stderr, "VirtualBox does not support the hidsim plugin (HID injection requires Xen QMP)\n");
+            return drakvuf_exit_code_t::FAIL;
+        }
+#endif
+        // Default-enabled Xen-only plugins must not prevent unrelated plugins from running.
+        if (!disabled_all)
+        {
+            plugin_list[PLUGIN_IPT] = false;
+            plugin_list[PLUGIN_HIDSIM] = false;
+        }
+    }
+
 #ifndef HAVE_ZSTD
     if (options.procdump_compression_method == DUMP_COMPRESSION_ZSTD)
     {

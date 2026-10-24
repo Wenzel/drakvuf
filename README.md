@@ -40,8 +40,12 @@ example:
 drakvuf -r linux-profile.json -d vbox:analysis-vm -a ptracemon
 ```
 
-`-F` and `-p` remain Xen-only. The compatible component revisions and complete
-live Linux reproduction are documented in libmicrovmi's VirtualBox driver guide.
+`-p` (leave paused), the `ipt` and `hidsim` plugins, and the standalone `dirwatch`
+tool require Xen and fail early when requested with a `vbox:` domain. Default
+plugin selection on VirtualBox skips `ipt` and `hidsim`; other plugins remain
+available. `-F` also remains Xen-only. The compatible component revisions and
+complete live Linux reproduction are documented in libmicrovmi's VirtualBox
+driver guide.
 
 ## Pre-built Debian packages
 
