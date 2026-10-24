@@ -1222,12 +1222,13 @@ int main(int argc, char** argv)
     if (domain && g_str_has_prefix(domain, "vbox:"))
     {
         uint32_t allocated = drakvuf->get_hidden_pages_allocated();
-        if (allocated > 0)
+        uint32_t pool_size = drakvuf->get_hidden_page_pool_size();
+        if (allocated > 0 || pool_size > 0)
         {
-            uint32_t shadows = allocated > 1 ? allocated - 1 : 0;
+            uint32_t shadows = allocated > 0 ? allocated - 1 : 0;
             eprint_current_time();
-            fprintf(stderr, "VirtualBox Hidden pages: %u allocated (1 sink + %u shadow%s)\n",
-                    allocated, shadows, shadows != 1 ? "s" : "");
+            fprintf(stderr, "VirtualBox Hidden pages: %u/%u used (1 sink + %u shadow%s)\n",
+                    allocated, pool_size, shadows, shadows != 1 ? "s" : "");
         }
     }
 

@@ -1609,7 +1609,7 @@ bool inject_trap_pa(drakvuf_t drakvuf,
 
         if ( VMI_FAILURE == vmi_write_8_pa(vmi, rpa, &bp) )
         {
-            fprintf(stderr, "Breakpoint stealth guard at PA 0x%lx: failed to write breakpoint to shadow page (execute-only pages may not be supported), falling back to RWX guard\n", container->breakpoint.pa);
+            PRINT_DEBUG("Using breakpoint instruction @ 0x%lx is not possible. Using fallback.\n", container->breakpoint.pa);
             container->breakpoint.guard.memaccess.access |= VMI_MEMACCESS_X;
         }
     }

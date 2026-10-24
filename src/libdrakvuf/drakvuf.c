@@ -744,6 +744,11 @@ uint32_t drakvuf_get_hidden_pages_allocated(drakvuf_t drakvuf)
     return drakvuf->hidden_pages_allocated;
 }
 
+uint32_t drakvuf_get_hidden_page_pool_size(drakvuf_t drakvuf)
+{
+    return vmi_hidden_page_pool_size(drakvuf->vmi);
+}
+
 bool drakvuf_process_is32bit(drakvuf_t drakvuf, drakvuf_trap_info_t* info)
 {
     return (drakvuf_get_address_width(drakvuf) == 4) || drakvuf_is_wow64(drakvuf, info);

@@ -181,6 +181,7 @@ public:
     int stop_plugins(const bool* plugin_list);
     void plugin_stop_loop(int timeout, const bool* plugin_list);
     uint32_t get_hidden_pages_allocated();
+    uint32_t get_hidden_page_pool_size();
 };
 
 #endif

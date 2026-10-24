@@ -210,6 +210,11 @@ uint32_t drakvuf_c::get_hidden_pages_allocated()
     return drakvuf ? drakvuf_get_hidden_pages_allocated(drakvuf) : 0;
 }
 
+uint32_t drakvuf_c::get_hidden_page_pool_size()
+{
+    return drakvuf ? drakvuf_get_hidden_page_pool_size(drakvuf) : 0;
+}
+
 drakvuf_c::drakvuf_c(const char* domain,
     const char* json_kernel_path,
     const char* json_wow_path,
