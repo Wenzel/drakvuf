@@ -670,8 +670,8 @@ bool drakvuf_resume (drakvuf_t drakvuf)
 void drakvuf_force_resume (drakvuf_t drakvuf)
 {
     if ( drakvuf->virtualbox )
-        /* a VBoxVMI resume undoes any number of pauses */
-        vmi_resume_vm(drakvuf->vmi);
+        /* LibVMI counts pauses like Xen: undo them all */
+        while ( VMI_SUCCESS == vmi_resume_vm(drakvuf->vmi) );
     else
         xen_force_resume(drakvuf->xen, drakvuf->domID);
 }
