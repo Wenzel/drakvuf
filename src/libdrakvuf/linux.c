@@ -251,11 +251,8 @@ bool linux_get_kernel_symbol_va(drakvuf_t drakvuf, const char* function, addr_t*
     if (!linux_get_kernel_symbol_rva(drakvuf, "_text", &_text))
         return false;
 
-    addr_t kaslr = drakvuf->kernbase - _text;
-    if (!kaslr)
-        return false;
-
-    *va += kaslr;
+    // A zero KASLR offset is valid: the kernel may load at its link address
+    *va += drakvuf->kernbase - _text;
     return true;
 }
 
