@@ -2058,6 +2058,8 @@ bool init_vmi(drakvuf_t drakvuf, bool fast_singlestep)
     drakvuf->vcpus = vmi_get_num_vcpus(drakvuf->vmi);
     if ( drakvuf->xen )
         drakvuf->init_memsize = xen_get_maxmemkb(drakvuf->xen, drakvuf->domID);
+    else
+        drakvuf->init_memsize = vmi_get_memsize(drakvuf->vmi) >> 10; // KiB, like Xen maxmemkb
 
     drakvuf->max_gpfn = vmi_get_max_physical_address(drakvuf->vmi) >> XC_PAGE_SHIFT;
     if ( !drakvuf->max_gpfn )
