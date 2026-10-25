@@ -1121,6 +1121,9 @@ static event_response_t io_cb(vmi_instance_t vmi, vmi_event_t* event)
 void remove_trap(drakvuf_t drakvuf,
     const drakvuf_trap_t* trap)
 {
+    if ( drakvuf->vmi_lost )
+        return; // VirtualBox removed every trap with the session; close_vmi frees the tables
+
     vmi_instance_t vmi = drakvuf->vmi;
 
     switch (trap->type)
@@ -1424,7 +1427,7 @@ static void free_page(drakvuf_t drakvuf, xen_pfn_t* gfn)
 {
     if ( !drakvuf->virtualbox )
         xen_decrease_reservation(drakvuf->xen, drakvuf->domID, gfn);
-    else if ( VMI_FAILURE == vmi_free_gfn(drakvuf->vmi, *gfn) )
+    else if ( !drakvuf->vmi_lost && VMI_FAILURE == vmi_free_gfn(drakvuf->vmi, *gfn) ) // lost: freed with the session
         fprintf(stderr, "Failed to free Hidden page 0x%lx\n", *gfn);
 }
 
@@ -1908,7 +1911,8 @@ static void drakvuf_poll(drakvuf_t drakvuf, unsigned int timeout)
         /* No event channel: LibVMI waits for VBoxVMI events itself, plugin fds are then checked without waiting */
         if ( VMI_SUCCESS != vmi_events_listen(drakvuf->vmi, timeout) )
         {
-            PRINT_DEBUG("Error waiting for events, quitting...\n");
+            fprintf(stderr, "Lost the VirtualBox VM's VBoxVMI session (see the error above), quitting\n");
+            drakvuf->vmi_lost = true;
             drakvuf->interrupted = -1;
             return;
         }
@@ -1953,10 +1957,13 @@ void drakvuf_loop(drakvuf_t drakvuf, bool (*is_interrupted)(drakvuf_t, void*), v
     while (!is_interrupted(drakvuf, data))
         drakvuf_poll(drakvuf, 1000);
 
-    drakvuf_pause(drakvuf);
+    if ( !drakvuf->vmi_lost )
+    {
+        drakvuf_pause(drakvuf);
 
-    // Ensures all events are processed from the ring
-    drakvuf_poll(drakvuf, 0);
+        // Ensures all events are processed from the ring
+        drakvuf_poll(drakvuf, 0);
+    }
 
     PRINT_DEBUG("DRAKVUF polling loop finished\n");
 }
@@ -2220,10 +2227,10 @@ void close_vmi(drakvuf_t drakvuf)
 
     if ( drakvuf->xen )
         xen_pause(drakvuf->xen, drakvuf->domID);
-    else if ( drakvuf->vmi )
+    else if ( drakvuf->vmi && !drakvuf->vmi_lost )
         vmi_pause_vm(drakvuf->vmi);
 
-    if (drakvuf->vmi)
+    if (drakvuf->vmi && !drakvuf->vmi_lost)
     {
         // clear the ring
         vmi_events_listen(drakvuf->vmi, 0);
@@ -2244,6 +2251,9 @@ void close_vmi(drakvuf_t drakvuf)
         // Hidden pages are released through the VBoxVMI connection
         if ( drakvuf->virtualbox )
             free_pages(drakvuf);
+    }
+    if (drakvuf->vmi)
+    {
         vmi_destroy(drakvuf->vmi);
         drakvuf->vmi = NULL;
     }

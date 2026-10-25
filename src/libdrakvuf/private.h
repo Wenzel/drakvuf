@@ -180,6 +180,7 @@ struct drakvuf
 
     xen_interface_t* xen;
     bool virtualbox; // VirtualBox through LibVMI only (domain "vbox:<VM name>"): xen stays NULL
+    bool vmi_lost; // VirtualBox: listening failed (VM reset, lost connection); closing the session undoes it all
     os_interface_t osi;
     uint16_t altp2m_idx, altp2m_idr, altp2m_idrx;
     bool vcpu_monitor[MAX_DRAKVUF_VCPU];
