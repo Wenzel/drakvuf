@@ -132,6 +132,17 @@ event_response_t ptracemon::ptrace_cb(drakvuf_t drakvuf, drakvuf_trap_info_t* in
         return VMI_EVENT_RESPONSE_NONE;
     }
 
+    // PTRACE_TRACEME ignores its pid argument (0): the caller itself becomes the traced process.
+    if (request == PTRACE_TRACEME)
+    {
+        fmt::print(this->m_output_format, "ptracemon", drakvuf, info,
+            keyval("Type", fmt::Rstr(request_str)),
+            keyval("TargetPID", fmt::Nval(info->proc_data.pid)),
+            keyval("TargetProcessName", fmt::Estr(info->proc_data.name))
+        );
+        return VMI_EVENT_RESPONSE_NONE;
+    }
+
     addr_t target_process_base, dtb;
     if (!drakvuf_get_process_by_pid(drakvuf, (vmi_pid_t)pid, &target_process_base, &dtb))
     {
